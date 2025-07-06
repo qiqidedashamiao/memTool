@@ -1,0 +1,2 @@
+
+g++ -g test_memory.cpp --std=c++11 -lpthread -ldl

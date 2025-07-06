@@ -1,0 +1,16 @@
+#忽略 a.out
+a.out
+*.dump
+*.json
+*.26120
+*.pyc
+*.core
+sonia
+libpreload.so
+core.2977
+*/output/*
+core.*
+memory_alloc*
+*.log
+*.xlsx
+
