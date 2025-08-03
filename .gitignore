@@ -14,6 +14,7 @@ memory_alloc*
 *.log
 *.xlsx
 
+huoyantu/win32/tools/recvDiagMemInfo/recvDiagMemInfo/.vs/*
 
 
 

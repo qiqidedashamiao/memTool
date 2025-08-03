@@ -1,32 +1,24 @@
-#include "../Base/TOS_BaseDataDiagMemInfo.h"
+#include "Base/TOS_BaseDataDiagMemInfo.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#include <winsock2.h>
+#ifdef _MSC_VER
 #include <ws2tcpip.h>
 #include <process.h>
-#include <time.h>
-#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "Ws2_32.lib") // 确保链接 Ws2_32.lib
 #else
-#include <unistd.h>
-#include <pthread.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/time.h>
-#include <poll.h>
-#include <getopt.h>
+
 #endif
 
+#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <thread>
 
 
 
@@ -41,7 +33,11 @@ static bool _mIsProtoTCP = false;
 
 typedef struct _ContextDiagMemInfo_stru
 {
+	#ifdef _MSC_VER
+    __declspec(align(16)) unsigned char RcvBuf[TOS_DIAGMEM_UDP_PACKET_MTU_RCVD];
+    #else
     unsigned char RcvBuf[TOS_DIAGMEM_UDP_PACKET_MTU_RCVD] __attribute__((aligned(16)));
+    #endif
     int RcvLen, BufLeftProcLen;
     struct sockaddr_in CliSockAddr;
 
@@ -89,7 +85,7 @@ static _ContextFileWriter_T _mCtxFileWriterHead = {0};
 static FILE* __createPipe2CompressorXZ( char *pFName )
 {
     FILE *pFile = NULL;
-#ifndef _WIN32
+#ifndef _MSC_VER
     int PipeFD[2];
     if( pipe(PipeFD) < 0 ){ _tos_abort(); }
 
@@ -159,27 +155,47 @@ static _ContextFileWriter_pT __createStandaloneOutputFile( _ContextDiagMemInfo_p
     {
         //fopen
         char TickNowBuf[64] = "";
+#ifdef _MSC_VER
+		struct tm localTime;
+		localtime_s(&localTime, &pCtxFileWriter->TickLatestWritten);
+
+		strftime(TickNowBuf, sizeof(TickNowBuf), TOS_DIAGMEM_FNAME_STRFTIME, &localTime);
+#else
         strftime(TickNowBuf, sizeof(TickNowBuf), TOS_DIAGMEM_FNAME_STRFTIME,
                  localtime(&pCtxFileWriter->TickLatestWritten));
+#endif
 
         char FNameBuf[256] = "";
         if( _mRawDiagMemInfoT )
         {
             // snprintf(FNameBuf, sizeof(FNameBuf), "DiagMem_%s_%s_%u_%s.binT",
             //     inet_ntoa(pCtxFileWriter->TargetIPAddr), pCapSrcDesc->ProgName, pHead->PID, TickNowBuf);
-
+#ifdef _MSC_VER
+            char ipStr[INET_ADDRSTRLEN]; // 用于存储转换后的 IP 地址
+             inet_ntop (AF_INET, &pCtxFileWriter->TargetIPAddr, ipStr, sizeof(ipStr));
+            snprintf(FNameBuf, sizeof(FNameBuf), TOS_DIAGMEM_FNAME_PREFIX_FMT_PRINT TOS_DIAGMEM_FNAME_SUFFIX_BINT,
+                    TOS_DIAGMEM_FNAME_PREFIX_MODID, ipStr, pCapSrcDesc->ProgName, pHead->PID, TickNowBuf);
+#else
             snprintf(FNameBuf, sizeof(FNameBuf), TOS_DIAGMEM_FNAME_PREFIX_FMT_PRINT TOS_DIAGMEM_FNAME_SUFFIX_BINT,
                      TOS_DIAGMEM_FNAME_PREFIX_MODID, inet_ntoa(pCtxFileWriter->TargetIPAddr), pCapSrcDesc->ProgName,
                      pHead->PID, TickNowBuf);
+#endif
         }
         else
         {
             // snprintf(FNameBuf, sizeof(FNameBuf), "DiagMem_%s_%s_%u_%s.log",
             //     inet_ntoa(pCtxFileWriter->TargetIPAddr), pCapSrcDesc->ProgName, pHead->PID, TickNowBuf);
-
+#ifdef _MSC_VER
+            char ipStr[INET_ADDRSTRLEN]; // 用于存储转换后的 IP 地址
+             inet_ntop (AF_INET, &pCtxFileWriter->TargetIPAddr, ipStr, sizeof(ipStr));
+            snprintf(FNameBuf, sizeof(FNameBuf), TOS_DIAGMEM_FNAME_PREFIX_FMT_PRINT TOS_DIAGMEM_FNAME_SUFFIX_LOG,
+                     TOS_DIAGMEM_FNAME_PREFIX_MODID, ipStr, pCapSrcDesc->ProgName,
+                     pHead->PID, TickNowBuf);
+#else
             snprintf(FNameBuf, sizeof(FNameBuf), TOS_DIAGMEM_FNAME_PREFIX_FMT_PRINT TOS_DIAGMEM_FNAME_SUFFIX_LOG,
                      TOS_DIAGMEM_FNAME_PREFIX_MODID, inet_ntoa(pCtxFileWriter->TargetIPAddr), pCapSrcDesc->ProgName,
                      pHead->PID, TickNowBuf);
+#endif
         }
 
         if( _mPipe2CompressorXZ )
@@ -188,14 +204,22 @@ static _ContextFileWriter_pT __createStandaloneOutputFile( _ContextDiagMemInfo_p
         }
         else
         {
+#ifdef _MSC_VER
+            fopen_s(&pCtxFileWriter->pFile2Write, FNameBuf, "w");
+#else
             pCtxFileWriter->pFile2Write = fopen(FNameBuf, "w");
+#endif
         }
 
         if( NULL == pCtxFileWriter->pFile2Write ){ _tos_abort(); }
         else 
         { 
             fprintf(stderr, "New output file: %s\n", FNameBuf); 
+#ifdef _MSC_VER
+            pCtxFileWriter->pFileName = _strdup(FNameBuf);
+#else
             pCtxFileWriter->pFileName = strdup(FNameBuf);
+#endif
         }
     }
 
@@ -290,12 +314,16 @@ static FILE* __getOrCreate_StandaloneOutputFile( _ContextDiagMemInfo_pT pCtxDMI 
                     { INADDR_ANY },
                     0,
                     NULL,
-                    "/dev/null",
+                    (char *)"/dev/null",
                     NULL
                 };
                 if( NULL==_mCtxFileWriterDevNull.pFile2Write )
                 {
+#ifdef _MSC_VER
+                    fopen_s(&_mCtxFileWriterDevNull.pFile2Write, _mCtxFileWriterDevNull.pFileName, "w");
+#else
                     _mCtxFileWriterDevNull.pFile2Write = fopen(_mCtxFileWriterDevNull.pFileName, "w");
+#endif
                 }
 
                 pCtxFileWriter = &_mCtxFileWriterDevNull;
@@ -436,10 +464,38 @@ static uint32_t __getTailSeqID(unsigned char *pRcvBuf, int BufLen)
 static void __recvAndProcDiagMemInfo( int SrvSockFD )
 {
     unsigned long RcvCounts = 0;
-    _ContextDiagMemInfo_T CtxDMI = {};
+    _ContextDiagMemInfo_T CtxDMI = {0};
     
     do
     {
+        socklen_t CliSockAddrLen = sizeof(CtxDMI.CliSockAddr);
+#ifdef _MSC_VER
+        fd_set readfds;
+        struct timeval timeout;
+        int RetPSX;
+        // 初始化 fd_set
+        FD_ZERO(&readfds);
+        FD_SET(SrvSockFD, &readfds);
+        // 设置超时时间为 10 秒
+        timeout.tv_sec = 10;
+        timeout.tv_usec = 0;
+
+        // 调用 select
+        RetPSX = select(SrvSockFD + 1, &readfds, NULL, NULL, &timeout);
+        if (RetPSX <= 0) // 超时或出错
+        {
+            //fprintf(stderr, "[Debug]: select timeout or error\n");
+            __closeAndFreeTimeoutStandaloneOutputFile();
+            if (_mIsProtoTCP) { _tos_abort(); } else { continue; }
+        }
+        __declspec(align(16)) unsigned char RcvBuf[TOS_DIAGMEM_UDP_PACKET_MTU];
+
+        u_long mode = 1; // 1 表示非阻塞模式
+        ioctlsocket(SrvSockFD, FIONBIO, &mode);
+        int RcvLen = recvfrom(SrvSockFD, (char *)RcvBuf, sizeof(RcvBuf), 0, 
+                                (struct sockaddr*)&CtxDMI.CliSockAddr, &CliSockAddrLen);
+
+#else
         struct pollfd fds = { .fd = SrvSockFD, .events = POLLIN, };
         int RetPSX = poll(&fds, 1, 10000);
         if( RetPSX != 1 )
@@ -448,12 +504,13 @@ static void __recvAndProcDiagMemInfo( int SrvSockFD )
             __closeAndFreeTimeoutStandaloneOutputFile();
             if(_mIsProtoTCP){ _tos_abort(); } else { continue; }
         }
-
-        socklen_t CliSockAddrLen = sizeof(CtxDMI.CliSockAddr);
         unsigned char RcvBuf[TOS_DIAGMEM_UDP_PACKET_MTU] __attribute__((aligned(16)));
-
+        
         int RcvLen = recvfrom(SrvSockFD, RcvBuf, sizeof(RcvBuf), MSG_DONTWAIT, 
                                 (struct sockaddr*)&CtxDMI.CliSockAddr, &CliSockAddrLen);
+#endif
+
+
         if( RcvLen < 0 )
         { 
             if( EAGAIN == errno )
@@ -685,6 +742,73 @@ static void __printUsage( char *pProgName )
     exit(-1);
 }
 
+#ifdef _MSC_VER
+static void __parseArgs(int argc, char *argv[])
+{
+    for (int i = 1; i < argc; i++)
+    {
+        if (strcmp(argv[i], "-P") == 0)
+        {
+            if (++i < argc)
+            {
+                _mSrvSockAddr.sin_port = htons(atoi(argv[i]));
+            }
+            else
+            {
+                __printUsage(argv[0]);
+            }
+        }
+        else if (strcmp(argv[i], "-D") == 0)
+        {
+            if (++i < argc)
+            {
+#ifdef _MSC_VER
+                if (!SetCurrentDirectoryA(argv[i]))
+#else
+                if (chdir(argv[i]) < 0)
+#endif
+                {
+                    printf("chdir(%s) fail\n", argv[i]);
+                    exit(-1);
+                }
+            }
+            else
+            {
+                __printUsage(argv[0]);
+            }
+        }
+        else if (strcmp(argv[i], "-S") == 0)
+        {
+            _mStandaloneFile = true;
+        }
+        else if (strcmp(argv[i], "-R") == 0)
+        {
+            _mRawDiagMemInfoT = true;
+        }
+        else if (strcmp(argv[i], "-I") == 0)
+        {
+            _mPipe2DispPushPMS = true;
+        }
+        else if (strcmp(argv[i], "-Z") == 0)
+        {
+            _mPipe2CompressorXZ = true;
+        }
+        else if (strcmp(argv[i], "-V") == 0)
+        {
+            _mVerboseStatReceiving = true;
+        }
+        else if (strcmp(argv[i], "-T") == 0)
+        {
+            _mIsProtoTCP = true;
+        }
+        else
+        {
+            __printUsage(argv[0]);
+        }
+    }
+}
+
+#else
 static void __parseArgs(int argc, char *argv[])
 {
     int opt;
@@ -741,6 +865,18 @@ static void __parseArgs(int argc, char *argv[])
         }
     }
 }
+#endif
+
+#ifdef _MSC_VER
+// unsigned int __stdcall threadFunc(void *arg)
+// {
+//     int CliSockFD = *(int *)arg;
+//     free(arg); // 释放分配的内存
+//     __recvAndProcDiagMemInfo(CliSockFD);
+//     closesocket(CliSockFD); // 关闭套接字
+//     return 0;
+// }
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -750,9 +886,23 @@ int main(int argc, char *argv[])
     __parseArgs(argc, argv);
 
     //-------------------------------------------------------------------------
+#ifdef _MSC_VER
+    char ipStr[INET_ADDRSTRLEN]; // 用于存储转换后的 IP 地址
+     inet_ntop (AF_INET, &_mSrvSockAddr.sin_addr, ipStr, sizeof(ipStr));
+    fprintf(stderr, "%s(Build@%s %s): Listening %s@(%s:%d)\n", argv[0], __DATE__, __TIME__,
+        _mIsProtoTCP ? "TCP" : "UDP",
+        ipStr, ntohs(_mSrvSockAddr.sin_port));
+
+     WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        fprintf(stderr, "WSAStartup failed.\n");
+        return -1;
+    }
+#else
     fprintf(stderr, "%s(Build@%s %s): Listening %s@(%s:%d)\n", argv[0], __DATE__, __TIME__,
         _mIsProtoTCP ? "TCP" : "UDP",
         inet_ntoa(_mSrvSockAddr.sin_addr), ntohs(_mSrvSockAddr.sin_port));
+#endif
     if( _mStandaloneFile )
     {
         if( _mPipe2DispPushPMS )
@@ -821,6 +971,41 @@ int main(int argc, char *argv[])
                 CliSockFD = RetPSX;
             }
 
+#ifdef _MSC_VER
+            // int *arg = (int *)malloc(sizeof(int));
+            // if (arg == NULL) {
+            //     perror("malloc");
+            //     exit(-1);
+            // }
+            // *arg = CliSockFD;
+
+            // HANDLE threadHandle = (HANDLE)_beginthreadex(
+            //     NULL,               // 默认安全属性
+            //     0,                  // 默认堆栈大小
+            //     threadFunc,         // 线程函数
+            //     arg,                // 传递给线程的参数
+            //     0,                  // 默认启动标志
+            //     NULL                // 不需要线程 ID
+            // );
+
+            // if (threadHandle == NULL) {
+            //     perror("_beginthreadex");
+            //     free(arg); // 如果线程创建失败，释放内存
+            //     closesocket(CliSockFD);
+            //     exit(-1);
+            // }
+
+            // // 等待线程完成（如果需要）
+            // // WaitForSingleObject(threadHandle, INFINITE);
+            // CloseHandle(threadHandle);
+
+            std::thread threadFunc([CliSockFD]() {
+                __recvAndProcDiagMemInfo(CliSockFD);
+                closesocket(CliSockFD); // 关闭套接字
+            });
+            threadFunc.detach(); // 分离线程
+
+#else
             pid_t pid = fork();
             if( (0) == pid )//Child
             {
@@ -835,6 +1020,7 @@ int main(int argc, char *argv[])
                 perror("fork");
                 exit(-1);
             }
+#endif
         } while ( 0x20230922 );
         
     }
@@ -843,5 +1029,10 @@ int main(int argc, char *argv[])
         __recvAndProcDiagMemInfo(SrvSockFD);
     }
 
+
+#ifdef _MSC_VER
+    // 清理 Winsock
+    WSACleanup();
+#endif
     return 0;
 }

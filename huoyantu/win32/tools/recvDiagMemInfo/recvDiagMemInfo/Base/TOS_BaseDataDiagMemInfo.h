@@ -1,5 +1,6 @@
 #include <stdint.h>
-#ifdef _WIN32
+#ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN // 避免包含 winsock.h
 #include <windows.h>
 typedef int pid_t;  // Windows 上定义 pid_t
 #include <winsock2.h> // Windows 上的网络头文件
