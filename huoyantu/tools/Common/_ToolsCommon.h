@@ -1,7 +1,6 @@
-_ToolsCommon.h
 // Common for all Tool's internal use only.
 // #include <ThinkOS/ArchBase/TOS_Base4ALL.h>
-#include <ThinkOS/ArchBase/TOS_BaseDataDiagMemInfo.h>  //BaseData::DiagMemInfo
+#include "../Base/TOS_BaseDataDiagMemInfo.h"  //BaseData::DiagMemInfo
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE

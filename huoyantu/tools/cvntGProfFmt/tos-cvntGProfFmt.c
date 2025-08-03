@@ -1,7 +1,7 @@
-tos-cvntGProfFmt.c
+
 //RefMore: https://yfgitlab.dahuatech.com/CleanArchitecture/iPSA-Architecture_Definition/-/blob/master/ArchV23/Qualities/DiagMemAllocFree.md
 
-#include <ThinkOS/ArchBase/TOS_BaseDataDiagMemInfo.h>
+#include "../Base/TOS_BaseDataDiagMemInfo.h"
 
 #include <stdbool.h>
 #include <stdlib.h>

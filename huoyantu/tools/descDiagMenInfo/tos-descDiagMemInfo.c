@@ -1,4 +1,3 @@
-tos-descDiagMemInfo.c
 #include "../Common/_ToolsCommon.h"
 
 typedef struct
